@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/user_status_service.dart';
+import 'home_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -77,6 +80,27 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           obscureText: true,
                         ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ForgotPasswordScreen(),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              'Forgot Password?',
+                              style: TextStyle(
+                                color: Color(0xFF4A90E2),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 24),
                         if (_error != null) ...[
                           Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -104,10 +128,30 @@ class _LoginScreenState extends State<LoginScreen> {
                                         email: _emailController.text.trim(),
                                         password: _passwordController.text.trim(),
                                       );
+                                      
+                                      // Check if user is admin and update their status
+                                      final user = FirebaseAuth.instance.currentUser;
+                                      if (user != null) {
+                                        final userEmail = _emailController.text.trim();
+                                        final isAdmin = userEmail == 'admin@legacy.com'; // Admin email
+                                        
+                                        // Update user document with admin status
+                                        await FirebaseFirestore.instance
+                                            .collection('users')
+                                            .doc(user.uid)
+                                            .update({
+                                          'isAdmin': isAdmin,
+                                        });
+                                      }
+                                      
                                       // Initialize user status service after successful login
                                       await UserStatusService().initialize();
                                       if (!mounted) return;
-                                      Navigator.pushReplacementNamed(context, '/home');
+                                      // Navigate to home screen - AuthWrapper will handle the routing
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const HomeScreen()),
+                                      );
                                     } on FirebaseAuthException catch (e) {
                                       setState(() {
                                         _error = e.message;

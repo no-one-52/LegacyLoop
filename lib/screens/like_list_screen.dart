@@ -22,48 +22,24 @@ class LikeListScreen extends StatelessWidget {
         itemBuilder: (context, index) {
           final userId = userIds[index];
           return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const ListTile(title: Text('Loading...'));
-              }
-              final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-              final nickname = data['nickname'] ?? 'User';
-              final photoUrl = data['photoUrl'];
-              ImageProvider avatarProvider;
-              if (photoUrl != null && photoUrl.isNotEmpty) {
-                avatarProvider = NetworkImage(photoUrl);
+            future: FirebaseFirestore.instance
+                .collection('users')
+                .doc(userId)
+                .get(),
+            builder: (context, userSnapshot) {
+              if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: userData['photoUrl'] != null && userData['photoUrl'].isNotEmpty
+                        ? NetworkImage(userData['photoUrl'])
+                        : const AssetImage('assets/logo.png') as ImageProvider,
+                  ),
+                  title: Text(userData['nickname'] ?? 'User'),
+                );
               } else {
-                avatarProvider = const AssetImage('assets/logo.png');
-              }
-              
-              void openUserProfile() {
-                final currentUser = FirebaseAuth.instance.currentUser;
-                if (currentUser != null && userId == currentUser.uid) {
-                  // Navigate to own profile
-                  Navigator.pushNamed(context, '/profile');
-                } else {
-                  // Navigate to public profile
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ProfileScreen(userId: userId),
-                    ),
-                  );
+                return const SizedBox.shrink();
                 }
-              }
-              
-              return ListTile(
-                leading: GestureDetector(
-                  onTap: openUserProfile,
-                  child: CircleAvatar(backgroundImage: avatarProvider),
-                ),
-                title: GestureDetector(
-                  onTap: openUserProfile,
-                  child: Text(nickname, style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                onTap: openUserProfile,
-              );
             },
           );
         },

@@ -18,6 +18,7 @@ class FeedScreen extends StatelessWidget {
         stream: FirebaseFirestore.instance
             .collection('posts')
             .orderBy('timestamp', descending: true)
+            .limit(50) // Limit posts for better performance
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
@@ -31,7 +32,19 @@ class FeedScreen extends StatelessWidget {
             itemCount: posts.length,
             itemBuilder: (context, index) {
               final post = posts[index];
+              return FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc((post.data() as Map<String, dynamic>)['userId'])
+                    .get(),
+                builder: (context, userSnapshot) {
+                  if (userSnapshot.hasData && userSnapshot.data!.exists) {
               return PostWidget(post: post);
+                  } else {
+                    return const SizedBox.shrink();
+                  }
+                },
+              );
             },
           );
         },

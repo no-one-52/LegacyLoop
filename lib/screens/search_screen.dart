@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:badges/badges.dart' as badges;
 import 'profile_screen.dart';
 import '../widgets/post_widget.dart';
+import '../services/notification_service.dart';
 import 'dart:async';
 
 class SearchScreen extends StatefulWidget {
@@ -14,7 +14,8 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin {
+class _SearchScreenState extends State<SearchScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -84,7 +85,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             child: TabBarView(
               controller: _tabController,
               children: [
-                _UsersTab(searchQuery: _searchQuery, selectUserMode: widget.selectUserMode),
+                _UsersTab(
+                    searchQuery: _searchQuery,
+                    selectUserMode: widget.selectUserMode),
                 _PostsTab(searchQuery: _searchQuery),
                 _HashtagsTab(searchQuery: _searchQuery),
               ],
@@ -110,7 +113,8 @@ class _UsersTab extends StatelessWidget {
           children: [
             Icon(Icons.people_outline, size: 64, color: Colors.grey),
             SizedBox(height: 16),
-            Text('Search for users by name, nickname, or email', style: TextStyle(fontSize: 16, color: Colors.grey)),
+            Text('Search for users by name, nickname, or email',
+                style: TextStyle(fontSize: 16, color: Colors.grey)),
           ],
         ),
       );
@@ -129,7 +133,9 @@ class _UsersTab extends StatelessWidget {
           final nickname = (data['nickname'] ?? '').toString().toLowerCase();
           final email = (data['email'] ?? '').toString().toLowerCase();
           final name = (data['name'] ?? '').toString().toLowerCase();
-          return nickname.contains(query) || email.contains(query) || name.contains(query);
+          return nickname.contains(query) ||
+              email.contains(query) ||
+              name.contains(query);
         }).toList();
         // Sort by best match (startsWith > contains)
         filtered.sort((a, b) {
@@ -146,8 +152,11 @@ class _UsersTab extends StatelessWidget {
             if (s.contains(query)) return 1;
             return 2;
           }
-          final scoreA = [score(nicknameA), score(emailA), score(nameA)].reduce((a, b) => a < b ? a : b);
-          final scoreB = [score(nicknameB), score(emailB), score(nameB)].reduce((a, b) => a < b ? a : b);
+
+          final scoreA = [score(nicknameA), score(emailA), score(nameA)]
+              .reduce((a, b) => a < b ? a : b);
+          final scoreB = [score(nicknameB), score(emailB), score(nameB)]
+              .reduce((a, b) => a < b ? a : b);
           return scoreA.compareTo(scoreB);
         });
         if (filtered.isEmpty) {
@@ -157,7 +166,8 @@ class _UsersTab extends StatelessWidget {
               children: [
                 const Icon(Icons.search_off, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text('No users found for "$searchQuery"', style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                Text('No users found for "$searchQuery"',
+                    style: const TextStyle(fontSize: 16, color: Colors.grey)),
               ],
             ),
           );
@@ -177,7 +187,9 @@ class _UsersTab extends StatelessWidget {
                     : const AssetImage('assets/logo.png') as ImageProvider,
                 radius: 25,
               ),
-              title: Text(nickname, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              title: Text(nickname,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
               subtitle: Text(userData['email'] ?? ''),
               trailing: selectUserMode
                   ? ElevatedButton(
@@ -188,7 +200,10 @@ class _UsersTab extends StatelessWidget {
                     )
                   : currentUser?.uid != userId
                       ? _buildFriendRequestButton(userId)
-                      : const Chip(label: Text('You', style: TextStyle(color: Colors.white)), backgroundColor: Color(0xFF7B1FA2)),
+                      : const Chip(
+                          label: Text('You',
+                              style: TextStyle(color: Colors.white)),
+                          backgroundColor: Color(0xFF7B1FA2)),
               onTap: selectUserMode
                   ? () {
                       Navigator.pop(context, userId);
@@ -199,7 +214,9 @@ class _UsersTab extends StatelessWidget {
                       } else {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => ProfileScreen(userId: userId)),
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  ProfileScreen(userId: userId)),
                         );
                       }
                     },
@@ -231,7 +248,7 @@ class _UsersTab extends StatelessWidget {
         if (requests.isNotEmpty) {
           final requestData = requests.first.data() as Map<String, dynamic>;
           final status = requestData['status'] as String?;
-          
+
           switch (status) {
             case 'pending':
               buttonText = 'Request Sent';
@@ -256,7 +273,8 @@ class _UsersTab extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: buttonColor,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
           child: Text(buttonText, style: const TextStyle(fontSize: 12)),
@@ -275,15 +293,10 @@ class _UsersTab extends StatelessWidget {
         'toUserId': targetUserId,
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
+        'viewedByReceiver': false,
       });
 
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'userId': targetUserId,
-        'type': 'friend_request',
-        'fromUserId': currentUser.uid,
-        'timestamp': FieldValue.serverTimestamp(),
-        'read': false,
-      });
+      await NotificationService.createFriendRequestNotification(targetUserId);
     } catch (e) {
       debugPrint('Error sending friend request: $e');
     }
@@ -303,13 +316,18 @@ class _PostsTab extends StatelessWidget {
           children: [
             Icon(Icons.article_outlined, size: 64, color: Colors.grey),
             SizedBox(height: 16),
-            Text('Search for posts by content or hashtags', style: TextStyle(fontSize: 16, color: Colors.grey)),
+            Text('Search for posts by content or hashtags',
+                style: TextStyle(fontSize: 16, color: Colors.grey)),
           ],
         ),
       );
     }
     return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance.collection('posts').orderBy('timestamp', descending: true).limit(100).get(),
+      future: FirebaseFirestore.instance
+          .collection('posts')
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .get(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -319,7 +337,8 @@ class _PostsTab extends StatelessWidget {
         final filtered = posts.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final text = (data['text'] ?? '').toString().toLowerCase();
-          final nickname = (data['userNickname'] ?? '').toString().toLowerCase();
+          final nickname =
+              (data['userNickname'] ?? '').toString().toLowerCase();
           return text.contains(query) || nickname.contains(query);
         }).toList();
         // Sort by best match (startsWith > contains)
@@ -327,16 +346,21 @@ class _PostsTab extends StatelessWidget {
           final dataA = a.data() as Map<String, dynamic>;
           final dataB = b.data() as Map<String, dynamic>;
           final textA = (dataA['text'] ?? '').toString().toLowerCase();
-          final nicknameA = (dataA['userNickname'] ?? '').toString().toLowerCase();
+          final nicknameA =
+              (dataA['userNickname'] ?? '').toString().toLowerCase();
           final textB = (dataB['text'] ?? '').toString().toLowerCase();
-          final nicknameB = (dataB['userNickname'] ?? '').toString().toLowerCase();
+          final nicknameB =
+              (dataB['userNickname'] ?? '').toString().toLowerCase();
           int score(String s) {
             if (s.startsWith(query)) return 0;
             if (s.contains(query)) return 1;
             return 2;
           }
-          final scoreA = [score(textA), score(nicknameA)].reduce((a, b) => a < b ? a : b);
-          final scoreB = [score(textB), score(nicknameB)].reduce((a, b) => a < b ? a : b);
+
+          final scoreA =
+              [score(textA), score(nicknameA)].reduce((a, b) => a < b ? a : b);
+          final scoreB =
+              [score(textB), score(nicknameB)].reduce((a, b) => a < b ? a : b);
           return scoreA.compareTo(scoreB);
         });
         if (filtered.isEmpty) {
@@ -346,7 +370,8 @@ class _PostsTab extends StatelessWidget {
               children: [
                 const Icon(Icons.search_off, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text('No posts found for "$searchQuery"', style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                Text('No posts found for "$searchQuery"',
+                    style: const TextStyle(fontSize: 16, color: Colors.grey)),
               ],
             ),
           );
@@ -376,13 +401,18 @@ class _HashtagsTab extends StatelessWidget {
           children: [
             Icon(Icons.tag, size: 64, color: Colors.grey),
             SizedBox(height: 16),
-            Text('Search for hashtags', style: TextStyle(fontSize: 16, color: Colors.grey)),
+            Text('Search for hashtags',
+                style: TextStyle(fontSize: 16, color: Colors.grey)),
           ],
         ),
       );
     }
     return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance.collection('posts').orderBy('timestamp', descending: true).limit(100).get(),
+      future: FirebaseFirestore.instance
+          .collection('posts')
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .get(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -411,7 +441,8 @@ class _HashtagsTab extends StatelessWidget {
               children: [
                 const Icon(Icons.search_off, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text('No hashtags found for "$searchQuery"', style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                Text('No hashtags found for "$searchQuery"',
+                    style: const TextStyle(fontSize: 16, color: Colors.grey)),
               ],
             ),
           );
@@ -422,7 +453,8 @@ class _HashtagsTab extends StatelessWidget {
             final tag = sortedTags[index];
             return ListTile(
               leading: const Icon(Icons.tag, color: Color(0xFF7B1FA2)),
-              title: Text('#$tag', style: const TextStyle(fontWeight: FontWeight.bold)),
+              title: Text('#$tag',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('${hashtags[tag]} posts'),
             );
           },
@@ -430,4 +462,4 @@ class _HashtagsTab extends StatelessWidget {
       },
     );
   }
-} 
+}

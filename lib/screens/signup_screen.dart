@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import '../services/user_status_service.dart';
+import 'home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -244,7 +245,11 @@ class _SignupScreenState extends State<SignupScreen> {
                                       await UserStatusService().initialize();
 
                                       if (!mounted) return;
-                                      Navigator.pushReplacementNamed(context, '/home');
+                                      // Navigate to home screen - AuthWrapper will handle the routing
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const HomeScreen()),
+                                      );
                                     } on FirebaseAuthException catch (e) {
                                       setState(() {
                                         _error = e.message;

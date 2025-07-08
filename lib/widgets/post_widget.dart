@@ -5,6 +5,8 @@ import '../screens/comments_screen.dart';
 import '../screens/like_list_screen.dart';
 import '../screens/edit_post_screen.dart';
 import '../screens/profile_screen.dart';
+import '../services/notification_service.dart';
+import 'package:intl/intl.dart';
 //import '../screens/public_profile_screen.dart';
 
 class PostWidget extends StatefulWidget {
@@ -22,14 +24,15 @@ class _PostWidgetState extends State<PostWidget> {
     try {
       // Delete the post document
       await widget.post.reference.delete();
-      
+
       // Delete associated comments
-      final commentsSnapshot = await widget.post.reference.collection('comments').get();
-      
+      final commentsSnapshot =
+          await widget.post.reference.collection('comments').get();
+
       for (var comment in commentsSnapshot.docs) {
         await comment.reference.delete();
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -56,7 +59,8 @@ class _PostWidgetState extends State<PostWidget> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Delete Post'),
-          content: const Text('Are you sure you want to delete this post? This action cannot be undone.'),
+          content: const Text(
+              'Are you sure you want to delete this post? This action cannot be undone.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -78,7 +82,9 @@ class _PostWidgetState extends State<PostWidget> {
 
   Widget _buildFriendRequestButtonForPost(String userId) {
     final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null || currentUser.uid == userId) return const SizedBox.shrink();
+    if (currentUser == null || currentUser.uid == userId) {
+      return const SizedBox.shrink();
+    }
     // Check for accepted friend request in either direction using two queries
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -97,9 +103,10 @@ class _PostWidgetState extends State<PostWidget> {
               .snapshots(),
           builder: (context, receivedSnapshot) {
             final isFriends = (sentSnapshot.data?.docs.isNotEmpty == true) ||
-                              (receivedSnapshot.data?.docs.isNotEmpty == true);
+                (receivedSnapshot.data?.docs.isNotEmpty == true);
             if (isFriends) {
-              return const Icon(Icons.check_circle, color: Color(0xFF26A69A), size: 22);
+              return const Icon(Icons.check_circle,
+                  color: Color(0xFF26A69A), size: 22);
             }
             // ...existing friend request button logic...
             return StreamBuilder<QuerySnapshot>(
@@ -120,16 +127,26 @@ class _PostWidgetState extends State<PostWidget> {
                       .limit(1)
                       .snapshots(),
                   builder: (context, receivedSnapshot2) {
-                    final sent = sentSnapshot2.data?.docs.isNotEmpty == true ? sentSnapshot2.data!.docs.first : null;
-                    final received = receivedSnapshot2.data?.docs.isNotEmpty == true ? receivedSnapshot2.data!.docs.first : null;
-                    final sentStatus = sent != null ? (sent.data() as Map<String, dynamic>)['status'] : null;
-                    final receivedStatus = received != null ? (received.data() as Map<String, dynamic>)['status'] : null;
+                    final sent = sentSnapshot2.data?.docs.isNotEmpty == true
+                        ? sentSnapshot2.data!.docs.first
+                        : null;
+                    final received =
+                        receivedSnapshot2.data?.docs.isNotEmpty == true
+                            ? receivedSnapshot2.data!.docs.first
+                            : null;
+                    final sentStatus = sent != null
+                        ? (sent.data() as Map<String, dynamic>)['status']
+                        : null;
+                    final receivedStatus = received != null
+                        ? (received.data() as Map<String, dynamic>)['status']
+                        : null;
 
                     if (sentStatus == 'pending') {
                       return Tooltip(
                         message: 'Request Sent',
                         child: IconButton(
-                          icon: const Icon(Icons.hourglass_top, color: Colors.grey),
+                          icon: const Icon(Icons.hourglass_top,
+                              color: Colors.grey),
                           onPressed: null,
                         ),
                       );
@@ -138,32 +155,53 @@ class _PostWidgetState extends State<PostWidget> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.check, color: Color(0xFF26A69A)),
+                            icon: const Icon(Icons.check,
+                                color: Color(0xFF26A69A)),
                             tooltip: 'Accept',
                             onPressed: () async {
-                              await FirebaseFirestore.instance.collection('friend_requests').doc(received!.id).update({'status': 'accepted'});
+                              await FirebaseFirestore.instance
+                                  .collection('friend_requests')
+                                  .doc(received!.id)
+                                  .update({'status': 'accepted'});
                             },
                           ),
                           IconButton(
                             icon: const Icon(Icons.close, color: Colors.red),
                             tooltip: 'Decline',
                             onPressed: () async {
-                              await FirebaseFirestore.instance.collection('friend_requests').doc(received!.id).update({'status': 'declined'});
+                              await FirebaseFirestore.instance
+                                  .collection('friend_requests')
+                                  .doc(received!.id)
+                                  .update({'status': 'declined'});
                             },
                           ),
                         ],
                       );
                     } else {
                       return IconButton(
-                        icon: const Icon(Icons.person_add, color: Color(0xFF7B1FA2)),
+                        icon: const Icon(Icons.person_add,
+                            color: Color(0xFF7B1FA2)),
                         tooltip: 'Add Friend',
                         onPressed: () async {
-                          await FirebaseFirestore.instance.collection('friend_requests').add({
-                            'fromUserId': currentUser.uid,
-                            'toUserId': userId,
-                            'status': 'pending',
-                            'timestamp': FieldValue.serverTimestamp(),
-                          });
+                          try {
+                            await FirebaseFirestore.instance
+                                .collection('friend_requests')
+                                .add({
+                              'fromUserId': currentUser.uid,
+                              'toUserId': userId,
+                              'status': 'pending',
+                              'timestamp': FieldValue.serverTimestamp(),
+                              'viewedByReceiver': false,
+                            });
+                            debugPrint('Friend request created successfully');
+
+                            // Create notification for receiver using the notification service
+                            await NotificationService
+                                .createFriendRequestNotification(userId);
+                          } catch (e) {
+                            debugPrint(
+                                'Error creating friend request or notification: $e');
+                          }
                         },
                       );
                     }
@@ -185,14 +223,16 @@ class _PostWidgetState extends State<PostWidget> {
     final text = data['text'] ?? '';
     final imageUrls = (data['imageUrls'] as List?)?.cast<String>() ?? [];
     final imageUrl = data['imageUrl'];
-    final timestamp = data['timestamp'] != null && data['timestamp'] is Timestamp
-        ? (data['timestamp'] as Timestamp).toDate()
-        : null;
+    final timestamp =
+        data['timestamp'] != null && data['timestamp'] is Timestamp
+            ? (data['timestamp'] as Timestamp).toDate()
+            : null;
     final likes = List<String>.from(data['likes'] ?? []);
     final likeCount = likes.length;
     final user = FirebaseAuth.instance.currentUser;
     final hasLiked = user != null && likes.contains(user.uid);
     final isOwnPost = user != null && data['userId'] == user.uid;
+    final userId = data['userId'];
 
     void toggleLike() async {
       if (user == null) return;
@@ -207,14 +247,8 @@ class _PostWidgetState extends State<PostWidget> {
         });
         // Create notification for post owner (if not own post)
         if (!isOwnPost) {
-          await FirebaseFirestore.instance.collection('notifications').add({
-            'userId': data['userId'],
-            'type': 'like',
-            'fromUserId': user.uid,
-            'postId': widget.post.id,
-            'timestamp': FieldValue.serverTimestamp(),
-            'read': false,
-          });
+          await NotificationService.createLikeNotification(
+              data['userId'], widget.post.id);
         }
       }
     }
@@ -238,9 +272,8 @@ class _PostWidgetState extends State<PostWidget> {
     }
 
     void openUserProfile() {
-      final userId = data['userId'];
-      final currentUser = FirebaseAuth.instance.currentUser;
       if (userId != null) {
+        final currentUser = FirebaseAuth.instance.currentUser;
         if (currentUser != null && userId == currentUser.uid) {
           // Navigate to own profile screen
           Navigator.push(
@@ -291,7 +324,8 @@ class _PostWidgetState extends State<PostWidget> {
                 GestureDetector(
                   onTap: openUserProfile,
                   child: CircleAvatar(
-                    backgroundImage: userPhotoUrl != null && userPhotoUrl.isNotEmpty
+                    backgroundImage: userPhotoUrl != null &&
+                            userPhotoUrl.isNotEmpty
                         ? NetworkImage(userPhotoUrl)
                         : const AssetImage('assets/logo.png') as ImageProvider,
                     radius: 20,
@@ -302,11 +336,14 @@ class _PostWidgetState extends State<PostWidget> {
                   onTap: openUserProfile,
                   child: Text(
                     userNickname,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold, 
+                      fontSize: 16,
+                    ),
                   ),
                 ),
-                // Friend Request Button (compact)
-                _buildFriendRequestButtonForPost(data['userId']),
+                // Friend Request Button (only show for existing users)
+                if (userId != null) _buildFriendRequestButtonForPost(data['userId']),
                 const Spacer(),
                 if (timestamp != null)
                   Text(
@@ -342,7 +379,8 @@ class _PostWidgetState extends State<PostWidget> {
                           children: [
                             Icon(Icons.delete, color: Colors.red),
                             SizedBox(width: 8),
-                            Text('Delete Post', style: TextStyle(color: Colors.red)),
+                            Text('Delete Post',
+                                style: TextStyle(color: Colors.red)),
                           ],
                         ),
                       ),
@@ -366,7 +404,8 @@ class _PostWidgetState extends State<PostWidget> {
                       height: 260,
                       child: PageView.builder(
                         itemCount: displayImages.length,
-                        controller: PageController(initialPage: _currentImageIndex),
+                        controller:
+                            PageController(initialPage: _currentImageIndex),
                         onPageChanged: (index) {
                           setState(() {
                             _currentImageIndex = index;
@@ -382,7 +421,8 @@ class _PostWidgetState extends State<PostWidget> {
                                 height: 200,
                                 color: Colors.grey[300],
                                 child: const Center(
-                                  child: Icon(Icons.error, size: 50, color: Colors.grey),
+                                  child: Icon(Icons.error,
+                                      size: 50, color: Colors.grey),
                                 ),
                               );
                             },
@@ -406,7 +446,8 @@ class _PostWidgetState extends State<PostWidget> {
                                 color: _currentImageIndex == index
                                     ? Colors.blue
                                     : Colors.white,
-                                border: Border.all(color: Colors.blue, width: 1),
+                                border:
+                                    Border.all(color: Colors.blue, width: 1),
                               ),
                             ),
                           ),
@@ -420,12 +461,15 @@ class _PostWidgetState extends State<PostWidget> {
             FutureBuilder<QuerySnapshot>(
               future: widget.post.reference.collection('comments').get(),
               builder: (context, snapshot) {
-                final commentCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                final commentCount =
+                    snapshot.hasData ? snapshot.data!.docs.length : 0;
                 return Row(
                   children: [
                     IconButton(
                       icon: Icon(
-                        hasLiked ? Icons.thumb_up_alt : Icons.thumb_up_alt_outlined,
+                        hasLiked
+                            ? Icons.thumb_up_alt
+                            : Icons.thumb_up_alt_outlined,
                         color: hasLiked ? Colors.blue : Colors.grey,
                       ),
                       onPressed: toggleLike,
@@ -436,7 +480,9 @@ class _PostWidgetState extends State<PostWidget> {
                         children: [
                           Text('$likeCount'),
                           const SizedBox(width: 4),
-                          const Text('Likes', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          const Text('Likes',
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey)),
                         ],
                       ),
                     ),
@@ -447,7 +493,8 @@ class _PostWidgetState extends State<PostWidget> {
                     ),
                     Text('$commentCount', style: const TextStyle(fontSize: 14)),
                     const SizedBox(width: 4),
-                    const Text('Comments', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const Text('Comments',
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 );
               },
@@ -457,4 +504,4 @@ class _PostWidgetState extends State<PostWidget> {
       ),
     );
   }
-} 
+}

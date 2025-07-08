@@ -60,45 +60,46 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> with Single
               if (requests.isEmpty) return const Center(child: Text('No received requests.'));
               return ListView.builder(
                 itemCount: requests.length,
-                itemBuilder: (context, i) {
-                  final req = requests[i];
-                  final data = req.data() as Map<String, dynamic>;
+                itemBuilder: (context, index) {
+                  final request = requests[index];
+                  final userId = request['fromUserId'] ?? request['userId'];
                   return FutureBuilder<DocumentSnapshot>(
-                    future: FirebaseFirestore.instance.collection('users').doc(data['fromUserId']).get(),
-                    builder: (context, userSnap) {
-                      final userData = userSnap.data?.data() as Map<String, dynamic>?;
-                      final nickname = userData?['nickname'] ?? data['fromUserId'];
-                      final photoUrl = userData?['photoUrl'];
-                      return Card(
-                        color: const Color(0xFFF3E5F5),
-                        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                        child: ListTile(
+                    future: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(userId)
+                        .get(),
+                    builder: (context, userSnapshot) {
+                      if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                        final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+                        return ListTile(
                           leading: CircleAvatar(
-                            backgroundImage: photoUrl != null && photoUrl.isNotEmpty
-                                ? NetworkImage(photoUrl)
+                            backgroundImage: userData['photoUrl'] != null && userData['photoUrl'].isNotEmpty
+                                ? NetworkImage(userData['photoUrl'])
                                 : const AssetImage('assets/logo.png') as ImageProvider,
                           ),
-                          title: Text(nickname),
-                          subtitle: Text('Status: ${data['status']}'),
-                          trailing: data['status'] == 'pending'
+                          title: Text(userData['nickname'] ?? 'User'),
+                          subtitle: Text('Status: ${request['status']}'),
+                          trailing: request['status'] == 'pending'
                               ? Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
                                       icon: const Icon(Icons.check, color: Color(0xFF26A69A)),
-                                      onPressed: () => FriendRequestService.acceptRequest(req.id),
+                                      onPressed: () => FriendRequestService.acceptRequest(request.id),
                                       tooltip: 'Accept',
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.close, color: Colors.red),
-                                      onPressed: () => FriendRequestService.declineRequest(req.id),
+                                      onPressed: () => FriendRequestService.declineRequest(request.id),
                                       tooltip: 'Decline',
                                     ),
                                   ],
                                 )
                               : null,
-                        ),
-                      );
+                        );
+                      } else {
+                        return const SizedBox.shrink();
+                      }
                     },
                   );
                 },
@@ -118,35 +119,36 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> with Single
               if (requests.isEmpty) return const Center(child: Text('No sent requests.'));
               return ListView.builder(
                 itemCount: requests.length,
-                itemBuilder: (context, i) {
-                  final req = requests[i];
-                  final data = req.data() as Map<String, dynamic>;
+                itemBuilder: (context, index) {
+                  final request = requests[index];
+                  final userId = request['toUserId'] ?? request['userId'];
                   return FutureBuilder<DocumentSnapshot>(
-                    future: FirebaseFirestore.instance.collection('users').doc(data['toUserId']).get(),
-                    builder: (context, userSnap) {
-                      final userData = userSnap.data?.data() as Map<String, dynamic>?;
-                      final nickname = userData?['nickname'] ?? data['toUserId'];
-                      final photoUrl = userData?['photoUrl'];
-                      return Card(
-                        color: const Color(0xFFE0F2F1),
-                        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                        child: ListTile(
+                    future: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(userId)
+                        .get(),
+                    builder: (context, userSnapshot) {
+                      if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                        final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+                        return ListTile(
                           leading: CircleAvatar(
-                            backgroundImage: photoUrl != null && photoUrl.isNotEmpty
-                                ? NetworkImage(photoUrl)
+                            backgroundImage: userData['photoUrl'] != null && userData['photoUrl'].isNotEmpty
+                                ? NetworkImage(userData['photoUrl'])
                                 : const AssetImage('assets/logo.png') as ImageProvider,
                           ),
-                          title: Text(nickname),
-                          subtitle: Text('Status: ${data['status']}'),
-                          trailing: data['status'] == 'pending'
+                          title: Text(userData['nickname'] ?? 'User'),
+                          subtitle: Text('Status: ${request['status']}'),
+                          trailing: request['status'] == 'pending'
                               ? IconButton(
                                   icon: const Icon(Icons.cancel, color: Colors.red),
-                                  onPressed: () => FriendRequestService.cancelRequest(req.id),
+                                  onPressed: () => FriendRequestService.cancelRequest(request.id),
                                   tooltip: 'Cancel',
                                 )
                               : null,
-                        ),
-                      );
+                        );
+                      } else {
+                        return const SizedBox.shrink();
+                      }
                     },
                   );
                 },

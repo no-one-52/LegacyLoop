@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'notification_service.dart';
 
 class FriendRequestService {
   static final _firestore = FirebaseFirestore.instance;
@@ -10,7 +11,11 @@ class FriendRequestService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.uid == toUserId) return;
     // Prevent duplicate requests
-    final existing = await _requests.where('fromUserId', isEqualTo: user.uid).where('toUserId', isEqualTo: toUserId).where('status', isEqualTo: 'pending').get();
+    final existing = await _requests
+        .where('fromUserId', isEqualTo: user.uid)
+        .where('toUserId', isEqualTo: toUserId)
+        .where('status', isEqualTo: 'pending')
+        .get();
     if (existing.docs.isNotEmpty) {
       debugPrint('sendRequest: duplicate request');
       return;
@@ -20,17 +25,12 @@ class FriendRequestService {
       'toUserId': toUserId,
       'status': 'pending',
       'timestamp': FieldValue.serverTimestamp(),
+      'viewedByReceiver': false,
     });
     debugPrint('sendRequest: request sent');
-    
-    // Create notification for the receiver
-    await FirebaseFirestore.instance.collection('notifications').add({
-      'userId': toUserId,
-      'type': 'friend_request',
-      'fromUserId': user.uid,
-      'timestamp': FieldValue.serverTimestamp(),
-      'read': false,
-    });
+
+    // Create notification for the receiver using the notification service
+    await NotificationService.createFriendRequestNotification(toUserId);
     debugPrint('sendRequest: notification created for receiver');
   }
 
@@ -48,14 +48,9 @@ class FriendRequestService {
     final data = doc.data() as Map<String, dynamic>;
     await _requests.doc(requestId).update({'status': 'accepted'});
     debugPrint('acceptRequest: request accepted');
-    // Create notification for sender
-    await FirebaseFirestore.instance.collection('notifications').add({
-      'userId': data['fromUserId'],
-      'type': 'friend_accept',
-      'fromUserId': data['toUserId'], // the receiver who accepted
-      'timestamp': FieldValue.serverTimestamp(),
-      'read': false,
-    });
+    // Create notification for sender using the notification service
+    await NotificationService.createFriendAcceptNotification(
+        data['fromUserId']);
     debugPrint('acceptRequest: notification created');
   }
 
@@ -66,17 +61,17 @@ class FriendRequestService {
 
   static Stream<QuerySnapshot> sentRequests(String userId) {
     return _requests
-      .where('fromUserId', isEqualTo: userId)
-      .where('status', isEqualTo: 'pending')
-      .orderBy('timestamp', descending: true)
-      .snapshots();
+        .where('fromUserId', isEqualTo: userId)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
   }
 
   static Stream<QuerySnapshot> receivedRequests(String userId) {
     return _requests
-      .where('toUserId', isEqualTo: userId)
-      .where('status', isEqualTo: 'pending')
-      .orderBy('timestamp', descending: true)
-      .snapshots();
+        .where('toUserId', isEqualTo: userId)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
   }
-} 
+}

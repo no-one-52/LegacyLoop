@@ -1,11 +1,11 @@
 {
-    "name": "legacy",
-    "short_name": "legacy",
+    "name": "LegacyLoop",
+    "short_name": "LegacyLoop",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#4A90E2",
+    "theme_color": "#7B1FA2",
+    "description": "A social media app for connecting with friends and sharing moments.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

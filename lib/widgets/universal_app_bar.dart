@@ -13,13 +13,13 @@ class UniversalAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int unreadMessagesCount;
 
   const UniversalAppBar({
-    Key? key,
+    super.key,
     this.onProfileTap,
     this.onMessageTap,
     this.onSearch,
     this.profilePhotoUrl,
     this.unreadMessagesCount = 0,
-  }) : super(key: key);
+  });
 
   @override
   Size get preferredSize => const Size.fromHeight(56);

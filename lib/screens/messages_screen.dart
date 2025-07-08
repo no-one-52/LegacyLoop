@@ -45,7 +45,7 @@ class _MessagesBody extends StatefulWidget {
 
 class _MessagesBodyState extends State<_MessagesBody> {
   final user = FirebaseAuth.instance.currentUser;
-  Set<String> _viewedConversations = {};
+  final Set<String> _viewedConversations = {};
 
   @override
   Widget build(BuildContext context) {

@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:image_picker/image_picker.dart';
+import 'notification_service.dart';
 
 class GroupService {
   static final GroupService _instance = GroupService._internal();
@@ -58,12 +58,12 @@ class GroupService {
     return groupRef.id;
   }
 
-  // Join a group
+  // Join a group (request to join)
   Future<void> joinGroup(String groupId) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    // Check if already a member
+    // Check if already a member or has pending request
     final existingMember = await _firestore
         .collection('group_members')
         .where('groupId', isEqualTo: groupId)
@@ -71,29 +71,32 @@ class GroupService {
         .get();
 
     if (existingMember.docs.isNotEmpty) {
-      throw Exception('Already a member of this group');
+      final status = existingMember.docs.first.data()['role'] as String;
+      if (status == 'pending') {
+        throw Exception(
+            'You already have a pending request to join this group');
+      } else {
+        throw Exception('You are already a member of this group');
+      }
     }
 
-    // Get group info to check if it's private
+    // Get group info
     final groupDoc = await _firestore.collection('groups').doc(groupId).get();
     if (!groupDoc.exists) throw Exception('Group not found');
 
-    final groupData = groupDoc.data() as Map<String, dynamic>;
-    final isPrivate = groupData['isPrivate'] as bool? ?? false;
-
-    // Add member
+    // Add member request (always pending for Facebook-like behavior)
     await _firestore.collection('group_members').add({
       'groupId': groupId,
       'userId': user.uid,
-      'role': isPrivate ? 'pending' : 'member',
+      'role': 'pending',
       'joinedAt': FieldValue.serverTimestamp(),
-      'approvedAt': isPrivate ? null : FieldValue.serverTimestamp(),
+      'approvedAt': null,
     });
 
-    // Update member count
-    await _firestore.collection('groups').doc(groupId).update({
-      'memberCount': FieldValue.increment(1),
-    });
+    // Send notification to group admins
+    await _sendJoinRequestNotification(groupId, user.uid);
+
+    // Note: Don't increment memberCount until approved
   }
 
   // Leave a group
@@ -110,7 +113,7 @@ class GroupService {
 
     if (membership.docs.isNotEmpty) {
       await membership.docs.first.reference.delete();
-      
+
       // Update member count
       await _firestore.collection('groups').doc(groupId).update({
         'memberCount': FieldValue.increment(-1),
@@ -126,8 +129,7 @@ class GroupService {
     return _firestore
         .collection('group_members')
         .where('userId', isEqualTo: user.uid)
-        .where('role', whereIn: ['admin', 'member'])
-        .snapshots();
+        .where('role', whereIn: ['admin', 'member']).snapshots();
   }
 
   // Get group details
@@ -156,35 +158,110 @@ class GroupService {
         .snapshots();
   }
 
+  // Get user's pending join requests
+  Future<List<Map<String, dynamic>>> getUserPendingRequests() async {
+    final user = _auth.currentUser;
+    if (user == null) return [];
+
+    final pendingRequests = await _firestore
+        .collection('group_members')
+        .where('userId', isEqualTo: user.uid)
+        .where('role', isEqualTo: 'pending')
+        .get();
+
+    final List<Map<String, dynamic>> requests = [];
+    for (var doc in pendingRequests.docs) {
+      final data = doc.data();
+      final groupId = data['groupId'] as String;
+      final groupData = await getGroupDetails(groupId);
+
+      if (groupData != null) {
+        requests.add({
+          'membershipId': doc.id,
+          'groupId': groupId,
+          'groupName': groupData['name'],
+          'groupCover': groupData['coverImageUrl'],
+          'joinedAt': data['joinedAt'],
+          'invitedBy': data['invitedBy'], // If invited by someone
+          ...data,
+        });
+      }
+    }
+
+    return requests;
+  }
+
+  // Cancel pending join request
+  Future<void> cancelJoinRequest(String membershipId) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    await _firestore.collection('group_members').doc(membershipId).delete();
+  }
+
   // Approve pending member
   Future<void> approveMember(String membershipId) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    // Get membership details
+    final membershipDoc =
+        await _firestore.collection('group_members').doc(membershipId).get();
+    if (!membershipDoc.exists) throw Exception('Membership not found');
+
+    final membershipData = membershipDoc.data() as Map<String, dynamic>;
+    final groupId = membershipData['groupId'] as String;
+    final userId = membershipData['userId'] as String;
+
+    // Check if current user is admin
+    final isAdmin = await isGroupAdmin(groupId);
+    if (!isAdmin) throw Exception('Only admins can approve members');
+
+    // Update membership to approved
     await _firestore.collection('group_members').doc(membershipId).update({
       'role': 'member',
       'approvedAt': FieldValue.serverTimestamp(),
     });
+
+    // Update member count (only now)
+    await _firestore.collection('groups').doc(groupId).update({
+      'memberCount': FieldValue.increment(1),
+    });
+
+    // Send approval notification
+    await _sendJoinApprovalNotification(groupId, userId);
   }
 
   // Reject pending member
   Future<void> rejectMember(String membershipId) async {
-    final membership = await _firestore.collection('group_members').doc(membershipId).get();
-    if (membership.exists) {
-      final data = membership.data() as Map<String, dynamic>;
-      final groupId = data['groupId'] as String;
-      
-      await membership.reference.delete();
-      
-      // Update member count
-      await _firestore.collection('groups').doc(groupId).update({
-        'memberCount': FieldValue.increment(-1),
-      });
-    }
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    // Get membership details
+    final membershipDoc =
+        await _firestore.collection('group_members').doc(membershipId).get();
+    if (!membershipDoc.exists) throw Exception('Membership not found');
+
+    final membershipData = membershipDoc.data() as Map<String, dynamic>;
+    final groupId = membershipData['groupId'] as String;
+    final userId = membershipData['userId'] as String;
+
+    // Check if current user is admin
+    final isAdmin = await isGroupAdmin(groupId);
+    if (!isAdmin) throw Exception('Only admins can reject members');
+
+    // Delete the membership request
+    await membershipDoc.reference.delete();
+
+    // Send rejection notification
+    await _sendJoinRejectionNotification(groupId, userId);
   }
 
-  // Create a post in group (requires approval)
+  // Create a post in group (admins can post directly, members need approval)
   Future<String> createGroupPost({
     required String groupId,
     required String content,
-    File? image,
+    List<File>? images,
   }) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
@@ -194,33 +271,45 @@ class GroupService {
         .collection('group_members')
         .where('groupId', isEqualTo: groupId)
         .where('userId', isEqualTo: user.uid)
-        .where('role', whereIn: ['admin', 'member'])
-        .get();
+        .where('role', whereIn: ['admin', 'member']).get();
 
     if (membership.docs.isEmpty) {
       throw Exception('You must be an approved member to post in this group');
     }
 
-    String? imageUrl;
-    if (image != null) {
-      final ref = _storage
-          .ref()
-          .child('group_posts')
-          .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await ref.putFile(image);
-      imageUrl = await ref.getDownloadURL();
+    // Check if user is admin
+    final isAdmin = membership.docs.first.data()['role'] == 'admin';
+
+    List<String> imageUrls = [];
+    if (images != null && images.isNotEmpty) {
+      for (final image in images) {
+        final ref = _storage
+            .ref()
+            .child('group_posts')
+            .child('${DateTime.now().millisecondsSinceEpoch}_${image.path.split('/').last}');
+        await ref.putFile(image);
+        final url = await ref.getDownloadURL();
+        imageUrls.add(url);
+      }
     }
 
     final postRef = await _firestore.collection('group_posts').add({
       'groupId': groupId,
       'content': content,
-      'imageUrl': imageUrl,
+      'imageUrls': imageUrls,
       'authorId': user.uid,
       'createdAt': FieldValue.serverTimestamp(),
-      'status': 'pending', // pending, approved, rejected
-      'approvedBy': null,
-      'approvedAt': null,
+      'status': isAdmin ? 'approved' : 'pending', // Admins post directly, members need approval
+      'approvedBy': isAdmin ? user.uid : null,
+      'approvedAt': isAdmin ? FieldValue.serverTimestamp() : null,
     });
+
+    // If admin posted, update group post count immediately
+    if (isAdmin) {
+      await _firestore.collection('groups').doc(groupId).update({
+        'postCount': FieldValue.increment(1),
+      });
+    }
 
     return postRef.id;
   }
@@ -232,6 +321,7 @@ class GroupService {
         .where('groupId', isEqualTo: groupId)
         .where('status', isEqualTo: 'approved')
         .orderBy('createdAt', descending: true)
+        .limit(30) // Limit posts for better performance
         .snapshots();
   }
 
@@ -303,8 +393,7 @@ class GroupService {
         .collection('group_members')
         .where('groupId', isEqualTo: groupId)
         .where('userId', isEqualTo: user.uid)
-        .where('role', whereIn: ['admin', 'member'])
-        .get();
+        .where('role', whereIn: ['admin', 'member']).get();
 
     return membership.docs.isNotEmpty;
   }
@@ -314,7 +403,7 @@ class GroupService {
     return _firestore
         .collection('groups')
         .where('name', isGreaterThanOrEqualTo: query)
-        .where('name', isLessThan: query + '\uf8ff')
+        .where('name', isLessThan: '$query\uf8ff')
         .limit(20)
         .snapshots();
   }
@@ -368,7 +457,7 @@ class GroupService {
         .collection('group_posts')
         .where('groupId', isEqualTo: groupId)
         .get();
-    
+
     final batch = _firestore.batch();
     for (var doc in posts.docs) {
       batch.delete(doc.reference);
@@ -379,23 +468,35 @@ class GroupService {
         .collection('group_members')
         .where('groupId', isEqualTo: groupId)
         .get();
-    
+
     for (var doc in memberships.docs) {
       batch.delete(doc.reference);
     }
 
     // Delete the group
     batch.delete(_firestore.collection('groups').doc(groupId));
-    
+
     await batch.commit();
   }
 
-  // Admin adds member directly (no approval)
+  // Admin adds member directly (no approval needed)
   Future<void> addMemberAsAdmin(String groupId, String userId) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) throw Exception('Not authenticated');
+
     final isAdmin = await isGroupAdmin(groupId);
     if (!isAdmin) throw Exception('Only admins can add members directly');
+
+    // Check if user is already a member
+    final existingMember = await _firestore
+        .collection('group_members')
+        .where('groupId', isEqualTo: groupId)
+        .where('userId', isEqualTo: userId)
+        .get();
+
+    if (existingMember.docs.isNotEmpty) {
+      throw Exception('User is already a member or has a pending request');
+    }
 
     await _firestore.collection('group_members').add({
       'groupId': groupId,
@@ -404,17 +505,34 @@ class GroupService {
       'joinedAt': FieldValue.serverTimestamp(),
       'approvedAt': FieldValue.serverTimestamp(),
     });
+
+    // Update member count
     await _firestore.collection('groups').doc(groupId).update({
       'memberCount': FieldValue.increment(1),
     });
+
+    // Send notification to added user
+    await _sendMemberAddedNotification(groupId, userId);
   }
 
-  // Member invites new user (pending approval)
+  // Member invites new user (creates pending request)
   Future<void> inviteMember(String groupId, String userId) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) throw Exception('Not authenticated');
+
     final isMember = await isGroupMember(groupId);
-    if (!isMember) throw Exception('Only members can invite');
+    if (!isMember) throw Exception('Only members can invite others');
+
+    // Check if user is already a member or has pending request
+    final existingMember = await _firestore
+        .collection('group_members')
+        .where('groupId', isEqualTo: groupId)
+        .where('userId', isEqualTo: userId)
+        .get();
+
+    if (existingMember.docs.isNotEmpty) {
+      throw Exception('User is already a member or has a pending request');
+    }
 
     await _firestore.collection('group_members').add({
       'groupId': groupId,
@@ -422,10 +540,14 @@ class GroupService {
       'role': 'pending',
       'joinedAt': FieldValue.serverTimestamp(),
       'approvedAt': null,
+      'invitedBy': currentUser.uid,
     });
-    await _firestore.collection('groups').doc(groupId).update({
-      'memberCount': FieldValue.increment(1),
-    });
+
+    // Send invitation notification to invited user
+    await _sendMemberInvitationNotification(groupId, userId, currentUser.uid);
+
+    // Send notification to admin about the invitation
+    await _sendInvitationPendingNotification(groupId, userId, currentUser.uid);
   }
 
   // Admin removes member (with notification)
@@ -456,4 +578,216 @@ class GroupService {
       });
     }
   }
-} 
+
+  // Get accurate member count (only approved members)
+  Future<int> getAccurateMemberCount(String groupId) async {
+    final members = await _firestore
+        .collection('group_members')
+        .where('groupId', isEqualTo: groupId)
+        .where('role', whereIn: ['admin', 'member']).get();
+
+    return members.docs.length;
+  }
+
+  // Update member count in group document
+  Future<void> updateMemberCount(String groupId) async {
+    final accurateCount = await getAccurateMemberCount(groupId);
+    await _firestore.collection('groups').doc(groupId).update({
+      'memberCount': accurateCount,
+    });
+  }
+
+  // Fix all group member counts (utility method)
+  Future<void> fixAllGroupMemberCounts() async {
+    try {
+      final groups = await _firestore.collection('groups').get();
+
+      for (var group in groups.docs) {
+        await updateMemberCount(group.id);
+      }
+
+      print('Fixed member counts for ${groups.docs.length} groups');
+    } catch (e) {
+      print('Error fixing group member counts: $e');
+    }
+  }
+
+  // Notification methods
+  Future<void> _sendJoinRequestNotification(
+      String groupId, String userId) async {
+    try {
+      final groupDoc = await _firestore.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) return;
+
+      final groupData = groupDoc.data() as Map<String, dynamic>;
+      final groupName = groupData['name'] as String;
+
+      // Send notification to all admins
+      final admins = await _firestore
+          .collection('group_members')
+          .where('groupId', isEqualTo: groupId)
+          .where('role', isEqualTo: 'admin')
+          .get();
+
+      for (var admin in admins.docs) {
+        final adminData = admin.data();
+        final adminId = adminData['userId'] as String;
+
+        await NotificationService.createNotification(
+          userId: adminId,
+          type: 'group_join_request',
+          fromUserId: userId,
+          additionalData: {
+            'groupId': groupId,
+            'groupName': groupName,
+            'message': 'New group join request',
+          },
+        );
+      }
+    } catch (e) {
+      print('Error sending join request notification: $e');
+    }
+  }
+
+  Future<void> _sendJoinApprovalNotification(
+      String groupId, String userId) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) return;
+
+      final groupDoc = await _firestore.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) return;
+
+      final groupData = groupDoc.data() as Map<String, dynamic>;
+      final groupName = groupData['name'] as String;
+
+      await NotificationService.createNotification(
+        userId: userId,
+        type: 'group_join_approved',
+        fromUserId: currentUser.uid,
+        additionalData: {
+          'groupId': groupId,
+          'groupName': groupName,
+          'message': 'Your group join request was approved',
+        },
+      );
+    } catch (e) {
+      print('Error sending join approval notification: $e');
+    }
+  }
+
+  Future<void> _sendJoinRejectionNotification(
+      String groupId, String userId) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) return;
+
+      final groupDoc = await _firestore.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) return;
+
+      final groupData = groupDoc.data() as Map<String, dynamic>;
+      final groupName = groupData['name'] as String;
+
+      await NotificationService.createNotification(
+        userId: userId,
+        type: 'group_join_rejected',
+        fromUserId: currentUser.uid,
+        additionalData: {
+          'groupId': groupId,
+          'groupName': groupName,
+          'message': 'Your group join request was rejected',
+        },
+      );
+    } catch (e) {
+      print('Error sending join rejection notification: $e');
+    }
+  }
+
+  Future<void> _sendMemberAddedNotification(
+      String groupId, String userId) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) return;
+
+      final groupDoc = await _firestore.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) return;
+
+      final groupData = groupDoc.data() as Map<String, dynamic>;
+      final groupName = groupData['name'] as String;
+
+      await NotificationService.createNotification(
+        userId: userId,
+        type: 'group_member_added',
+        fromUserId: currentUser.uid,
+        additionalData: {
+          'groupId': groupId,
+          'groupName': groupName,
+          'message': 'You were added to a group',
+        },
+      );
+    } catch (e) {
+      print('Error sending member added notification: $e');
+    }
+  }
+
+  Future<void> _sendMemberInvitationNotification(
+      String groupId, String userId, String inviterId) async {
+    try {
+      final groupDoc = await _firestore.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) return;
+
+      final groupData = groupDoc.data() as Map<String, dynamic>;
+      final groupName = groupData['name'] as String;
+
+      await NotificationService.createNotification(
+        userId: userId,
+        type: 'group_invitation',
+        fromUserId: inviterId,
+        additionalData: {
+          'groupId': groupId,
+          'groupName': groupName,
+          'message': 'You were invited to join a group',
+        },
+      );
+    } catch (e) {
+      print('Error sending member invitation notification: $e');
+    }
+  }
+
+  Future<void> _sendInvitationPendingNotification(
+      String groupId, String invitedUserId, String inviterId) async {
+    try {
+      final groupDoc = await _firestore.collection('groups').doc(groupId).get();
+      if (!groupDoc.exists) return;
+
+      final groupData = groupDoc.data() as Map<String, dynamic>;
+      final groupName = groupData['name'] as String;
+
+      // Send notification to all admins
+      final admins = await _firestore
+          .collection('group_members')
+          .where('groupId', isEqualTo: groupId)
+          .where('role', isEqualTo: 'admin')
+          .get();
+
+      for (var admin in admins.docs) {
+        final adminData = admin.data();
+        final adminId = adminData['userId'] as String;
+
+        await NotificationService.createNotification(
+          userId: adminId,
+          type: 'group_invitation_pending',
+          fromUserId: inviterId,
+          additionalData: {
+            'groupId': groupId,
+            'groupName': groupName,
+            'invitedUserId': invitedUserId,
+            'message': 'A member invited someone to join the group',
+          },
+        );
+      }
+    } catch (e) {
+      print('Error sending invitation pending notification: $e');
+    }
+  }
+}

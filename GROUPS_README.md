@@ -17,8 +17,8 @@ This feature implements a comprehensive group system similar to Facebook, with a
 
 ### 3. Post System with Admin Approval
 - **Create Posts**: Members can create text and image posts in groups
-- **Post Approval**: All posts require admin approval before appearing in the group feed
-- **Admin Controls**: Admins can approve or reject posts
+- **Post Approval**: Admin posts are published immediately, member posts require admin approval
+- **Admin Controls**: Admins can approve or reject member posts
 - **Post Status**: Pending, Approved, or Rejected
 
 ### 4. Group Discovery
@@ -120,9 +120,10 @@ group_posts/{postId} {
 1. Member navigates to group detail screen
 2. Taps post creation button
 3. Writes content and optionally adds image
-4. Post is submitted with "pending" status
-5. Admin reviews and approves/rejects post
-6. Approved posts appear in group feed
+4. **Admin posts**: Published immediately
+5. **Member posts**: Submitted with "pending" status for admin approval
+6. Admin reviews and approves/rejects member posts
+7. Approved posts appear in group feed
 
 ### Admin Moderation
 1. Admin views pending members/posts in respective tabs
@@ -158,8 +159,8 @@ group_posts/{postId} {
 - **Member Privacy**: Member lists visible to group members only
 
 ### Content Moderation
-- **Post Approval**: All posts require admin approval
-- **Admin Controls**: Only admins can approve/reject content
+- **Post Approval**: Admin posts are published immediately, member posts require approval
+- **Admin Controls**: Only admins can approve/reject member content
 - **Content Filtering**: Admins can remove inappropriate content
 
 ### Data Security

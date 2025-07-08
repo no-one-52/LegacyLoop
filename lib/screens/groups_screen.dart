@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../services/group_service.dart';
 import 'create_group_screen.dart';
 import 'group_detail_screen.dart';
@@ -12,7 +11,8 @@ class GroupsScreen extends StatefulWidget {
   State<GroupsScreen> createState() => _GroupsScreenState();
 }
 
-class _GroupsScreenState extends State<GroupsScreen> with TickerProviderStateMixin {
+class _GroupsScreenState extends State<GroupsScreen>
+    with TickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -36,29 +36,6 @@ class _GroupsScreenState extends State<GroupsScreen> with TickerProviderStateMix
       _searchQuery = query;
       _isSearching = query.isNotEmpty;
     });
-  }
-
-  Future<void> _joinGroup(String groupId) async {
-    try {
-      await GroupService().joinGroup(groupId);
-      if (!mounted) return;
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request to join group sent!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error joining group: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 
   @override
@@ -124,7 +101,7 @@ class _GroupsScreenState extends State<GroupsScreen> with TickerProviderStateMix
               ),
             ),
           ),
-          
+
           // Tab Content
           Expanded(
             child: TabBarView(
@@ -155,13 +132,13 @@ class _MyGroupsTab extends StatelessWidget {
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
-        
+
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
         final memberships = snapshot.data!.docs;
-        
+
         if (memberships.isEmpty) {
           return const Center(
             child: Column(
@@ -191,12 +168,18 @@ class _MyGroupsTab extends StatelessWidget {
             }
 
             final groups = groupSnapshot.data!;
-            
+
             // Filter by search query
             final filteredGroups = groups.where((group) {
               if (searchQuery.isEmpty) return true;
-              return group['name'].toString().toLowerCase().contains(searchQuery.toLowerCase()) ||
-                     group['description'].toString().toLowerCase().contains(searchQuery.toLowerCase());
+              return group['name']
+                      .toString()
+                      .toLowerCase()
+                      .contains(searchQuery.toLowerCase()) ||
+                  group['description']
+                      .toString()
+                      .toLowerCase()
+                      .contains(searchQuery.toLowerCase());
             }).toList();
 
             if (filteredGroups.isEmpty) {
@@ -217,7 +200,8 @@ class _MyGroupsTab extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => GroupDetailScreen(groupId: group['id']),
+                        builder: (context) =>
+                            GroupDetailScreen(groupId: group['id']),
                       ),
                     );
                   },
@@ -230,13 +214,14 @@ class _MyGroupsTab extends StatelessWidget {
     );
   }
 
-  Future<List<Map<String, dynamic>>> _getGroupDetails(List<QueryDocumentSnapshot> memberships) async {
+  Future<List<Map<String, dynamic>>> _getGroupDetails(
+      List<QueryDocumentSnapshot> memberships) async {
     final groups = <Map<String, dynamic>>[];
-    
+
     for (var membership in memberships) {
       final data = membership.data() as Map<String, dynamic>;
       final groupId = data['groupId'] as String;
-      
+
       final groupDetails = await GroupService().getGroupDetails(groupId);
       if (groupDetails != null) {
         groups.add({
@@ -246,7 +231,7 @@ class _MyGroupsTab extends StatelessWidget {
         });
       }
     }
-    
+
     return groups;
   }
 }
@@ -285,13 +270,13 @@ class _DiscoverTab extends StatelessWidget {
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
-        
+
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
         final groups = snapshot.data!.docs;
-        
+
         if (groups.isEmpty) {
           return const Center(
             child: Text('No groups found matching your search'),
@@ -304,16 +289,24 @@ class _DiscoverTab extends StatelessWidget {
           itemBuilder: (context, index) {
             final group = groups[index].data() as Map<String, dynamic>;
             group['id'] = groups[index].id;
-            
-            return _GroupCard(
-              group: group,
-              isMember: false,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GroupDetailScreen(groupId: group['id']),
-                  ),
+
+            return FutureBuilder<bool>(
+              future: GroupService().isGroupMember(group['id']),
+              builder: (context, membershipSnapshot) {
+                final isMember = membershipSnapshot.data ?? false;
+
+                return _GroupCard(
+                  group: group,
+                  isMember: isMember,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            GroupDetailScreen(groupId: group['id']),
+                      ),
+                    );
+                  },
                 );
               },
             );
@@ -333,13 +326,13 @@ class _PopularTab extends StatelessWidget {
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
-        
+
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
         final groups = snapshot.data!.docs;
-        
+
         if (groups.isEmpty) {
           return const Center(
             child: Text('No popular groups found'),
@@ -352,16 +345,24 @@ class _PopularTab extends StatelessWidget {
           itemBuilder: (context, index) {
             final group = groups[index].data() as Map<String, dynamic>;
             group['id'] = groups[index].id;
-            
-            return _GroupCard(
-              group: group,
-              isMember: false,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GroupDetailScreen(groupId: group['id']),
-                  ),
+
+            return FutureBuilder<bool>(
+              future: GroupService().isGroupMember(group['id']),
+              builder: (context, membershipSnapshot) {
+                final isMember = membershipSnapshot.data ?? false;
+
+                return _GroupCard(
+                  group: group,
+                  isMember: isMember,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            GroupDetailScreen(groupId: group['id']),
+                      ),
+                    );
+                  },
                 );
               },
             );
@@ -406,7 +407,8 @@ class _GroupCard extends StatelessWidget {
               height: 120,
               width: double.infinity,
               decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(12)),
                 image: coverImageUrl != null
                     ? DecorationImage(
                         image: NetworkImage(coverImageUrl),
@@ -421,7 +423,7 @@ class _GroupCard extends StatelessWidget {
                     )
                   : null,
             ),
-            
+
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -446,9 +448,9 @@ class _GroupCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 8),
-                  
+
                   // Description
                   if (description.isNotEmpty) ...[
                     Text(
@@ -462,11 +464,12 @@ class _GroupCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                   ],
-                  
+
                   // Category
                   if (category != null) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.blue[100],
                         borderRadius: BorderRadius.circular(12),
@@ -482,7 +485,7 @@ class _GroupCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                   ],
-                  
+
                   // Stats
                   Row(
                     children: [
@@ -507,39 +510,46 @@ class _GroupCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Action Button
-                  if (!isMember)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // Handle join group
-                          GroupService().joinGroup(group['id']).then((_) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Request to join group sent!'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }).catchError((e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Error joining group: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          });
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7B1FA2),
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Join Group'),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: isMember
+                          ? null
+                          : () async {
+                              try {
+                                await GroupService().joinGroup(group['id']);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content:
+                                          Text('Request to join group sent!'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error joining group: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            isMember ? Colors.grey : const Color(0xFF7B1FA2),
+                        foregroundColor: Colors.white,
                       ),
+                      child: Text(isMember ? 'Already a Member' : 'Join Group'),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -548,4 +558,4 @@ class _GroupCard extends StatelessWidget {
       ),
     );
   }
-} 
+}

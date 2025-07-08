@@ -39,7 +39,7 @@ class _UserSearchDialogState extends State<UserSearchDialog> {
                 stream: FirebaseFirestore.instance
                     .collection('users')
                     .where('nickname', isGreaterThanOrEqualTo: _search)
-                    .where('nickname', isLessThan: _search + '\uf8ff')
+                    .where('nickname', isLessThan: '$_search\uf8ff')
                     .limit(10)
                     .snapshots(),
                 builder: (context, snapshot) {
