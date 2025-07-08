@@ -1,63 +1,51 @@
-# LegacyLoop
+Legacy Social App
+A cross-platform social networking app built with Flutter and Firebase, supporting group creation, posts, comments, likes, and user profiles.
+Features
+•	- User authentication (Firebase Auth)
+•	- Group creation and management (public/private)
+•	- Group posts with images, likes, and comments
+•	- Admin approval for group posts and members
+•	- User profiles with avatars and nicknames
+•	- Real-time updates using Firestore
+•	- Notifications for likes and group activities
+•	- Responsive UI for Android, iOS, Web, Windows, Linux, and macOS
 
-A social media app built with Flutter and Firebase.
+Getting Started
+Prerequisites
+•	- Flutter: https://flutter.dev/docs/get-started/install
+•	- Firebase CLI: https://firebase.google.com/docs/cli
+•	- A Firebase project with Firestore, Auth, and Storage enabled
+Installation
+1.	Clone the repository:
 
-## Features
+   git clone https://github.com/yourusername/legacy.git
+   cd legacy
+2.	Install dependencies:
 
-### Authentication
-- **Persistent Login**: Users stay logged in until they explicitly log out, just like Instagram and Facebook
-- Email/password authentication
-- User profile management
-- Admin panel for user management
+   flutter pub get
+3.	Set up Firebase:
+   - Add google-services.json (Android) and GoogleService-Info.plist (iOS) to respective directories.
+   - Update lib/firebase_options.dart if using FlutterFire CLI.
+4.	Run the app:
 
-### Social Features
-- Create and share posts with text, images, and videos
-- Like and comment on posts
-- Friend requests and connections
-- Real-time messaging
-- Group creation and management
-- User status (online/offline)
-- Notifications
+   flutter run
+5.	Optional - Set up Firebase Cloud Functions:
 
-### Admin Features
-- User management (view, delete users)
-- Content moderation
-- Group management
-- Admin actions logging
+   cd functions
+   npm install
+   firebase deploy --only functions
+Project Structure
 
-## Persistent Authentication
+lib/
+  screens/        UI screens (groups, posts, profile, etc.)
+  services/       Business logic and Firebase interaction
+  widgets/        Reusable UI components
+  main.dart       App entry point
 
-The app implements persistent authentication using Firebase Auth's `authStateChanges()` stream. This means:
+functions/        Firebase Cloud Functions (Node.js)
+assets/           Images and static assets
 
-- Users remain logged in when they close and reopen the app
-- Users stay logged in when the app is backgrounded and foregrounded
-- Users only need to log in once per device
-- Users must explicitly log out to end their session
-
-### How it works:
-
-1. **AuthWrapper**: The main app uses an `AuthWrapper` that listens to Firebase Auth state changes
-2. **Automatic Routing**: When the app starts, it automatically checks if a user is already authenticated
-3. **Seamless Experience**: If authenticated, users go directly to the home screen; if not, they see the login screen
-4. **Session Persistence**: Firebase Auth handles token storage and refresh automatically
-
-This provides a smooth user experience similar to popular social media apps like Instagram and Facebook.
-
-## Getting Started
-
-1. Clone the repository
-2. Install dependencies: `flutter pub get`
-3. Configure Firebase (add your `google-services.json` and `GoogleService-Info.plist`)
-4. Run the app: `flutter run`
-
-## Dependencies
-
-- Flutter
-- Firebase (Auth, Firestore, Storage)
-- Image picker
-- File picker
-- Badges
-
-## License
-
+Contributing
+Pull requests are welcome. For major changes, please open an issue first to discuss your ideas.
+License
 This project is licensed under the MIT License.
